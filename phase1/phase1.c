@@ -179,6 +179,7 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
 
    /* test if in kernel mode; halt if in user mode */
    check_kernel_mode();
+   disableInterrupts();
 
    /* Return if stack size is too small */
    if(stacksize < USLOSS_MIN_STACK)
@@ -233,9 +234,10 @@ void launch()
       console("launch(): started\n");
 
    /* Enable interrupts */
-
+   enableInterrupts();
 
    /* Call the function passed to fork1, and capture its return value */
+   Current->status = STATUS_RUNNING;
    result = Current->start_func(Current->start_arg);
 
    if (DEBUG && debugflag)
@@ -260,6 +262,11 @@ void launch()
    ------------------------------------------------------------------------ */
 int join(int *code)
 {
+   // check if in kernel mode
+   check_kernel_mode();
+   disableInterrupts();
+
+
 } /* join */
 
 
@@ -409,5 +416,17 @@ void check_kernel_mode()
    {
       console("fork1(): called while in user mode, by process %d", Current->pid);
       halt(1);
+   }
+}
+
+int find_proc_spot()
+{
+   int proc_slot = -1;
+   int i;
+   int start_pid = next_pid;
+
+   for(i = (start_pid%MAXPROC); i < MAXPROC; i++)
+   {
+      
    }
 }
