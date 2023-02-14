@@ -73,9 +73,9 @@ void startup()
    }
    
    /* Initialize the Ready list, etc. */
-
    if (DEBUG && debugflag)
       console("startup(): initializing the Ready & Blocked lists\n");
+
    ReadyList = NULL;
 
    /* Initialize the clock interrupt handler */
@@ -109,7 +109,13 @@ void startup()
    return;
 } /* startup */
 
-
+/* ------------------------------------------------------------------------
+   Name - init proc tables
+   Purpose - Initializes the process table properties to an initial value
+   Parameters - Integer value i - the index being sent
+   Returns - nothing
+   Side Effects - the properties within the process table ProcTable are changed. 
+   ----------------------------------------------------------------------- */
 void init_proc_table(int i)
 {
    check_kernel_mode();
