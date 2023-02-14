@@ -64,7 +64,14 @@ void startup()
    int result; /* value returned by call to fork1() */
 
    /* initialize the process table */
-
+   if(DEBUG && debugflag)
+      console("startup(): initializing process table - ProcTable[]\n");
+   
+   for (i = 0; i < MAXPROC; i++)
+   {
+      init_proc_table(i);
+   }
+   
    /* Initialize the Ready list, etc. */
 
    if (DEBUG && debugflag)
@@ -90,7 +97,7 @@ void startup()
       console("startup(): calling fork1() for start1\n");
 
    result = fork1("start1", start1, NULL, 2 * USLOSS_MIN_STACK, 1);
-   
+
    if (result < 0) {
       console("startup(): fork1 for start1 returned an error, halting...\n");
       halt(1);
@@ -101,6 +108,36 @@ void startup()
 
    return;
 } /* startup */
+
+
+void init_proc_table(int i)
+{
+   check_kernel_mode();
+   disableInterrupts();
+   proc_struct current_proc = ProcTable[i];
+
+   // initialize ProcTable
+   current_proc.next_proc_ptr = NULL;
+   current_proc.child_proc_ptr = NULL;
+   current_proc.next_sibling_ptr = NULL;
+   current_proc.parent_ptr = NULL;
+   current_proc.quit_child_ptr = NULL;
+   current_proc.next_sibling_quit = NULL;
+   current_proc.who_zapped = NULL;
+   current_proc.next_who_zapped = NULL;
+   strcpy(current_proc.name, "");
+   current_proc.start_arg[0] = '\0';
+   current_proc.pid = -1;
+   current_proc.priority = -1;
+   current_proc.start_func = NULL;
+   current_proc.stack = NULL;
+   current_proc.stacksize = -1;
+   current_proc.status = STATUS_EMPTY;
+   current_proc.quitStatus = STATUS_EMPTY;
+   current_proc.startTime = -1;
+   current_proc.zapped = -1;
+   current_proc.cpuStartTime = -1;
+}
 
 /* ------------------------------------------------------------------------
    Name - finish

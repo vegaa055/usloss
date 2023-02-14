@@ -50,6 +50,7 @@ union psr_values {
 #define SENTINELPRIORITY LOWEST_PRIORITY
 
 /* Process Statuses */
+#define STATUS_EMPTY -1
 #define STATUS_READY 1
 #define STATUS_RUNNING 2
 #define STATUS_QUIT 4
