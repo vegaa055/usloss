@@ -18,6 +18,7 @@ void launch();
 void enableInterrupts();
 void disableInterrupts();
 static void check_deadlock();
+void check_kernel_mode();
 int zap(int pid);
 int isZapped();
 int getPID();
@@ -40,7 +41,11 @@ proc_ptr Current;
 /* the next pid to be assigned */
 unsigned int next_pid = SENTINELPID;
 
+//ADDED IN THURS OFFICE HOURS WK 2 @ ~00:12:59
+void clock_handler(int dev, void *arg)
+{
 
+}
 /* -------------------------- Functions ----------------------------------- */
 /* ------------------------------------------------------------------------
    Name - startup
@@ -52,17 +57,22 @@ unsigned int next_pid = SENTINELPID;
    ----------------------------------------------------------------------- */
 void startup()
 {
+   // check if currently in kernel mode
+   check_kernel_mode();
+
    int i;      /* loop index */
    int result; /* value returned by call to fork1() */
 
    /* initialize the process table */
 
    /* Initialize the Ready list, etc. */
+
    if (DEBUG && debugflag)
       console("startup(): initializing the Ready & Blocked lists\n");
    ReadyList = NULL;
 
    /* Initialize the clock interrupt handler */
+   int_vec[CLOCK_INT] = clock_handler; //ADDED IN THURS OFFICE HOURS WK 2 @ ~00:12:59
 
    /* startup a sentinel process */
    if (DEBUG && debugflag)
@@ -78,7 +88,9 @@ void startup()
    /* start the test process */
    if (DEBUG && debugflag)
       console("startup(): calling fork1() for start1\n");
+
    result = fork1("start1", start1, NULL, 2 * USLOSS_MIN_STACK, 1);
+   
    if (result < 0) {
       console("startup(): fork1 for start1 returned an error, halting...\n");
       halt(1);
@@ -123,7 +135,7 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
       console("fork1(): creating process %s\n", name);
 
    /* test if in kernel mode; halt if in user mode */
-   checkKernelMode();
+   check_kernel_mode();
 
    /* Return if stack size is too small */
    if(stacksize < USLOSS_MIN_STACK)
@@ -295,7 +307,7 @@ void disableInterrupts()
 int zap(int pid)
 {
    int result = 0;
-   checkKernelMode();
+   check_kernel_mode();
    disableInterrupts();
 
    /* make sure we don't zap ourselves */
@@ -348,7 +360,7 @@ int getPID()
    return Current->pid;
 }
 
-int checkKernelMode()
+void check_kernel_mode()
 {
    if((PSR_CURRENT_MODE && psr_get()) == 0 )
    {
