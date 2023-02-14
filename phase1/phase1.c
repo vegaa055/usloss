@@ -20,8 +20,8 @@ void disableInterrupts();
 static void check_deadlock();
 void check_kernel_mode();
 int zap(int pid);
-int isZapped();
-int getPID();
+int is_zapped();
+int get_pid();
 
 
 /* -------------------------- Globals ------------------------------------- */
@@ -354,7 +354,7 @@ int zap(int pid)
    disableInterrupts();
 
    /* make sure we don't zap ourselves */
-   if(getPID() == pid)
+   if(get_pid() == pid)
    {
       console("Zap: process %d is attempting to zap itself.\n", pid);
       halt(1);
@@ -374,7 +374,7 @@ int zap(int pid)
          console("The process being zapped has quit but not joined.\n");
       }
 
-      if(isZapped()){
+      if(is_zapped()){
          result = -1;
       }
       result = 0; //Might be redundant but just in case
@@ -393,12 +393,12 @@ int zap(int pid)
    return result;
 }
 
-int isZapped()
+int is_zapped()
 {
    return Current->zapped;
 }
 
-int getPID()
+int get_pid()
 {
    return Current->pid;
 }
