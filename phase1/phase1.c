@@ -419,7 +419,7 @@ void check_kernel_mode()
    }
 }
 
-int find_proc_spot()
+int find_proc_slot()
 {
    int proc_slot = -1;
    int i;
@@ -427,6 +427,31 @@ int find_proc_spot()
 
    for(i = (start_pid%MAXPROC); i < MAXPROC; i++)
    {
-      
+      if(ProcTable[i].status == STATUS_EMPTY)
+      {
+         proc_slot = i;
+         break;
+      }
+      else
+      {
+         next_pid++;
+      }
    }
+
+   if(proc_slot == -1)
+   {
+      for (i = 0; i < (start_pid%MAXPROC); i++)
+      {
+         if(ProcTable[i].status == STATUS_EMPTY)
+         {
+            proc_slot = i;
+            break;
+         }
+         else
+         {
+            next_pid++;
+         }
+      }
+   }
+   return proc_slot;
 }
