@@ -25,7 +25,7 @@ int getpid();
 static int get_next_pid();
 int find_proc_slot();
 void add_proc_to_readylist(proc_ptr proc);
-
+void remove_from_readylist(proc_ptr proc);
 
 /* -------------------------- Globals ------------------------------------- */
 
@@ -258,6 +258,11 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
    add_proc_to_readylist(&ProcTable[proc_slot]);
    next_pid++;
 
+   /* Sentinel does not call dispatcher when initially created*/
+   if(ProcTable[proc_slot].pid != SENTINELPID)
+   {
+      dispatcher();
+   }
 
    return ProcTable[proc_slot].pid;
 
@@ -406,6 +411,8 @@ void disableInterrupts()
 int zap(int pid)
 {
    int result = 0;
+   proc_ptr zap_ptr;
+
    check_kernel_mode();
    disableInterrupts();
 
@@ -423,6 +430,7 @@ int zap(int pid)
       halt(1);
    }
 
+/* Process to be zapped has finished running but is waiting for a parent */
    if(ProcTable[pid%MAXPROC].status == STATUS_QUIT)
    {
       if(DEBUG && debugflag)
@@ -430,6 +438,7 @@ int zap(int pid)
          console("The process being zapped has quit but not joined.\n");
       }
 
+      /* zapped by another process */
       if(is_zapped()){
          result = -1;
       }
@@ -440,9 +449,25 @@ int zap(int pid)
    
    /* block until pid quits */
    Current->status = STATUS_ZAP_BLOCKED;
+   remove_from_readylist(Current);
+   zap_ptr = &ProcTable[pid%MAXPROC];
+   zap_ptr->zapped = 1;
+
+   if(zap_ptr->who_zapped == NULL)
+   {
+      zap_ptr->who_zapped = Current;
+   }
+   else
+   {
+      proc_ptr ptr = zap_ptr->who_zapped;
+      zap_ptr->who_zapped = Current;
+      zap_ptr->who_zapped->next_who_zapped = ptr;
+   }
 
    dispatcher();
 
+   if(is_zapped)
+      result = -1;
 
    return result;
 }
