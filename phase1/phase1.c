@@ -386,6 +386,10 @@ static void check_deadlock()
 {
 } /* check_deadlock */
 
+void enableInterrupts()
+{
+
+}
 /*
  * Disables the interrupts.
  */
@@ -441,8 +445,6 @@ int zap(int pid)
 
    dispatcher();
 
-   /*might find it helpful to distinguish between the mode where you're blocked, waiting for the join
-   and blocked waiting for a zap - a way to distinguish between two states*/
 
    return result;
 }
