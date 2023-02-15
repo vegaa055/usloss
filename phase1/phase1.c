@@ -44,7 +44,6 @@ proc_ptr Current;
 /* the next pid to be assigned */
 unsigned int next_pid = SENTINELPID;
 
-//ADDED IN THURS OFFICE HOURS WK 2 @ ~00:12:59
 void clock_handler(int dev, void *arg)
 {
 
@@ -82,8 +81,7 @@ void startup()
    ReadyList = NULL;
 
    /* Initialize the clock interrupt handler */
-   int_vec[CLOCK_INT] = clock_handler; //ADDED IN THURS OFFICE HOURS WK 2 @ ~00:12:59
-
+   int_vec[CLOCK_INT] = clock_handler; 
    /* startup a sentinel process */
    if (DEBUG && debugflag)
        console("startup(): calling fork1() for sentinel\n");
