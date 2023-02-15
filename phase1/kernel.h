@@ -17,6 +17,7 @@ struct proc_struct {
    char           start_arg[MAXARG];   /* args passed to process */
    context        state;               /* current context for process */
    short          pid;                 /* process id */
+   short          ppid;                /* parent process id*/
    int            priority;
    int (* start_func) (char *);        /* function where process begins -- launch */
    char          *stack;

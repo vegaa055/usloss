@@ -21,7 +21,10 @@ static void check_deadlock();
 void check_kernel_mode();
 int zap(int pid);
 int is_zapped();
-int get_pid();
+int getpid();
+static int get_next_pid();
+int find_proc_slot();
+void add_proc_to_readylist(proc_ptr proc);
 
 
 /* -------------------------- Globals ------------------------------------- */
@@ -32,7 +35,7 @@ int debugflag = 1;
 /* the process table */
 proc_struct ProcTable[MAXPROC];
 
-/* Process lists  */
+/* Process lisadd_proc_to_readylistts  */
 static proc_ptr ReadyList;
 
 /* current process ID */
@@ -185,26 +188,62 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
    if(stacksize < USLOSS_MIN_STACK)
    {
       console("fork1(): process %s stack size too small\n");
-      return;  //TODO return value??
+      return -2;  //TODO return value??
    }
 
    /* find an empty slot in the process table */
+   proc_slot = find_proc_slot();
 
    /* fill-in entry in process table */
    if ( strlen(name) >= (MAXNAME - 1) ) {
       console("fork1(): Process name is too long.  Halting...\n");
       halt(1);
    }
+
+   ProcTable[proc_slot].pid = next_pid;
+   //  set the proc name
    strcpy(ProcTable[proc_slot].name, name);
+   // set the proc start func
    ProcTable[proc_slot].start_func = f;
+
+   // set the proc args
    if ( arg == NULL )
       ProcTable[proc_slot].start_arg[0] = '\0';
-   else if ( strlen(arg) >= (MAXARG - 1) ) {
+   else if ( strlen(arg) >= (MAXARG - 1) ) 
+   {
       console("fork1(): argument too long.  Halting...\n");
       halt(1);
    }
    else
       strcpy(ProcTable[proc_slot].start_arg, arg);
+
+   ProcTable[proc_slot].stacksize = stacksize;
+   if(ProcTable[proc_slot].stack == malloc(stacksize) == NULL)
+   {
+      console("malloc failure. Halting...\n");
+      halt(1);
+   }
+   ProcTable[proc_slot].priority = priority;
+
+   if(Current != NULL)
+   {
+      if(Current->child_proc_ptr == NULL)
+      {
+         Current->child_proc_ptr = &ProcTable[proc_slot];
+      }
+      else
+      {
+         proc_ptr child = Current->child_proc_ptr;
+
+         while(child->next_sibling_ptr != NULL)
+         {
+            child = child->next_proc_ptr;
+         }
+         child->next_sibling_ptr = &ProcTable[proc_slot];
+      }
+   }
+
+   ProcTable[proc_slot].parent_ptr = Current;
 
    /* Initialize context for this process, but use launch function pointer for
     * the initial value of the process's program counter (PC)
@@ -215,6 +254,14 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
 
    /* for future phase(s) */
    p1_fork(ProcTable[proc_slot].pid);
+
+   /* Make process ready and add to ready list*/
+   ProcTable[proc_slot].status = STATUS_READY;
+   add_proc_to_readylist(&ProcTable[proc_slot]);
+   next_pid++;
+
+
+   return ProcTable[proc_slot].pid;
 
 } /* fork1 */
 
@@ -361,7 +408,7 @@ int zap(int pid)
    disableInterrupts();
 
    /* make sure we don't zap ourselves */
-   if(get_pid() == pid)
+   if(getpid() == pid)
    {
       console("Zap: process %d is attempting to zap itself.\n", pid);
       halt(1);
@@ -405,7 +452,7 @@ int is_zapped()
    return Current->zapped;
 }
 
-int get_pid()
+int getpid()
 {
    return Current->pid;
 }
@@ -455,3 +502,39 @@ int find_proc_slot()
    }
    return proc_slot;
 }
+
+void add_proc_to_readylist(proc_ptr proc)
+{
+   if(DEBUG && debugflag)
+   {
+      console("add_proc_to_readylist(): Adding process %s to ReadyList\n", proc->name);
+   }
+
+   if(ReadyList == NULL)
+   {
+      ReadyList = proc;
+   }
+   else
+   {
+      if(ReadyList->priority > proc->priority)
+      {
+         proc_ptr tempProc = ReadyList;
+         ReadyList = proc;
+         proc->next_proc_ptr = tempProc;
+      }
+      else
+      {
+         proc_ptr next = ReadyList->next_proc_ptr;
+         proc_ptr last = ReadyList;
+         while(next->priority <= proc->priority)
+         {
+            last = next;
+            next = next->next_proc_ptr;
+         }
+      }
+      if(DEBUG && debugflag)
+      {
+         console("add_proc_to_readylist(): Process %s added to ReadyList", proc->name);
+      }
+   }
+}/*add_proc_to_readylist*/
