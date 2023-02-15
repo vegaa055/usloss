@@ -214,6 +214,7 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
    else
       strcpy(ProcTable[proc_slot].start_arg, arg);
 
+   /* Initialize the new process's stack */
    ProcTable[proc_slot].stack = malloc(stacksize);
 
    if(ProcTable[proc_slot].stack == NULL)
@@ -261,12 +262,8 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
    add_proc_to_readylist(&ProcTable[proc_slot]);
    next_pid++;
 
-   /* Sentinel does not call dispatcher when initially created*/
-   if(ProcTable[proc_slot].pid != SENTINELPID)
-   {
-      dispatcher();
-   }
-
+   // call dispatcher
+   dispatcher();
    return ProcTable[proc_slot].pid;
 
 } /* fork1 */
@@ -360,6 +357,9 @@ void dispatcher(void)
 {
    proc_ptr next_process;
 
+   // pick the next process to run
+
+   // context switch to it
    p1_switch(Current->pid, next_process->pid);
 } /* dispatcher */
 
