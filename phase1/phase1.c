@@ -204,7 +204,6 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
    // set the proc start func
    ProcTable[proc_slot].start_func = f;
 
-   // set the proc args
    if ( arg == NULL )
       ProcTable[proc_slot].start_arg[0] = '\0';
    else if ( strlen(arg) >= (MAXARG - 1) ) 
@@ -215,12 +214,16 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
    else
       strcpy(ProcTable[proc_slot].start_arg, arg);
 
-   ProcTable[proc_slot].stacksize = stacksize;
-   if(ProcTable[proc_slot].stack == malloc(stacksize) == NULL)
+   ProcTable[proc_slot].stack = malloc(stacksize);
+
+   if(ProcTable[proc_slot].stack == NULL)
    {
       console("malloc failure. Halting...\n");
       halt(1);
    }
+
+   ProcTable[proc_slot].stacksize = stacksize;
+
    ProcTable[proc_slot].priority = priority;
 
    if(Current != NULL)
