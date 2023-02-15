@@ -563,3 +563,8 @@ void add_proc_to_readylist(proc_ptr proc)
       }
    }
 }/*add_proc_to_readylist*/
+
+void remove_from_readylist(proc_ptr proc)
+{
+   
+}
