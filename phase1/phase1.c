@@ -35,8 +35,7 @@ int debugflag = 1;
 /* the process table */
 proc_struct ProcTable[MAXPROC];
 
-/* Process lisadd_proc_to_readylistts  */
-static proc_ptr ReadyList;
+proc_ptr ReadyList[6];
 
 /* current process ID */
 proc_ptr Current;
@@ -78,7 +77,7 @@ void startup()
    if (DEBUG && debugflag)
       console("startup(): initializing the Ready & Blocked lists\n");
 
-   ReadyList = NULL;
+   ReadyList[i] = NULL;
 
    /* Initialize the clock interrupt handler */
    int_vec[CLOCK_INT] = clock_handler; 
@@ -93,6 +92,7 @@ void startup()
       halt(1);
    }
   
+   
    /* start the test process */
    if (DEBUG && debugflag)
       console("startup(): calling fork1() for start1\n");
@@ -259,11 +259,16 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
 
    /* Make process ready and add to ready list*/
    ProcTable[proc_slot].status = STATUS_READY;
+   
    add_proc_to_readylist(&ProcTable[proc_slot]);
    next_pid++;
 
    // call dispatcher
-   dispatcher();
+   if(ProcTable[proc_slot].pid != SENTINELPID)
+   {
+      dispatcher();
+   }
+   
    return ProcTable[proc_slot].pid;
 
 } /* fork1 */
@@ -538,24 +543,31 @@ void add_proc_to_readylist(proc_ptr proc)
       console("add_proc_to_readylist(): Adding process %s to ReadyList\n", proc->name);
    }
 
-   if(ReadyList == NULL)
+   if(ReadyList[0] == NULL)
    {
-      ReadyList = proc;
+      ReadyList[0] = proc;
    }
    else
    {
-      if(ReadyList->priority > proc->priority)
+      if(ReadyList[0]->priority > proc->priority)
       {
-         proc_ptr tempProc = ReadyList;
-         ReadyList = proc;
+         proc_ptr tempProc = ReadyList[0];
+         ReadyList[0] = proc;
          proc->next_proc_ptr = tempProc;
       }
       else
       {
-         proc_ptr next = ReadyList->next_proc_ptr;
-         proc_ptr last = ReadyList;
-         while(next->priority <= proc->priority)
+         proc_ptr next = ReadyList[0]->next_proc_ptr;
+         proc_ptr last = ReadyList[0];
+         int i;
+         for(i=1; i < 6; i++)
          {
+            if(next == NULL || next->priority > proc->priority)
+            {
+               last->next_proc_ptr = proc;
+               proc->next_proc_ptr = next;
+               break;
+            }
             last = next;
             next = next->next_proc_ptr;
          }
