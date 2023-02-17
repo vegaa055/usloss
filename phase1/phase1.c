@@ -35,7 +35,7 @@ int debugflag = 1;
 /* the process table */
 proc_struct ProcTable[MAXPROC];
 
-proc_ptr ReadyList[6];
+proc_ptr ReadyList;
 
 /* current process ID */
 proc_ptr Current;
@@ -68,7 +68,7 @@ void startup()
    if(DEBUG && debugflag)
       console("startup(): initializing process table - ProcTable[]\n");
 
-   ReadyList[i] = NULL;
+   ReadyList = NULL;
 
    for (i = 0; i < MAXPROC; i++)
    {
@@ -339,7 +339,21 @@ int join(int *code)
 void quit(int code)
 {
 
-   proc_ptr parent;
+   int current_pid;
+
+   check_kernel_mode();
+
+   disableInterrupts();
+
+   if(Current->child_proc_ptr != NULL)
+   {
+      console("quit(): process %s has children.\n", Current->name);
+      halt(1);
+   }
+
+   Current->status = STATUS_QUIT;
+   remove_from_readylist(Current);
+
 
    // Are there any zappers
    p1_quit(Current->pid);
@@ -423,6 +437,7 @@ int zap(int pid)
    int result = 0;
    proc_ptr zap_ptr;
 
+   // make sure that PSR is in kernel mode and disable interupts
    check_kernel_mode();
    disableInterrupts();
 
@@ -459,10 +474,13 @@ int zap(int pid)
    
    /* block until pid quits */
    Current->status = STATUS_ZAP_BLOCKED;
+   // remove the process from the readylist
    remove_from_readylist(Current);
+   // set the zap_ptr and zapped property to 1 to mark as 'zapped'
    zap_ptr = &ProcTable[pid%MAXPROC];
    zap_ptr->zapped = 1;
 
+   // set current as the zapper
    if(zap_ptr->who_zapped == NULL)
    {
       zap_ptr->who_zapped = Current;
@@ -546,27 +564,25 @@ void add_proc_to_readylist(proc_ptr proc)
       console("add_proc_to_readylist(): Adding process %s to ReadyList\n", proc->name);
    }
 
-   if (ReadyList[0] == NULL || ReadyList[0]->priority > proc->priority)
+   if (ReadyList == NULL)
    {
-      proc->next_proc_ptr = ReadyList[0];
-      ReadyList[0] = proc;
+      ReadyList = proc;
+      proc->next_proc_ptr = NULL;
+   }
+   else if (ReadyList->priority > proc->priority)
+   {
+      proc->next_proc_ptr = ReadyList;
+      ReadyList = proc;
    }
    else
    {
-      proc_ptr last = ReadyList[0];
-      proc_ptr next = last->next_proc_ptr;
-      int i;
-      for (i = 1; i < 6; i++)
+      proc_ptr current = ReadyList;
+      while (current->next_proc_ptr != NULL && current->next_proc_ptr->priority <= proc->priority)
       {
-         if (next == NULL || next->priority > proc->priority)
-         {
-            last->next_proc_ptr = proc;
-            proc->next_proc_ptr = next;
-            break;
-         }
-         last = next;
-         next = next->next_proc_ptr;
+         current = current->next_proc_ptr;
       }
+      proc->next_proc_ptr = current->next_proc_ptr;
+      current->next_proc_ptr = proc;
    }
 
    if (DEBUG && debugflag)
@@ -574,9 +590,34 @@ void add_proc_to_readylist(proc_ptr proc)
       console("add_proc_to_readylist(): Process %s added to ReadyList\n", proc->name);
    }
 }
+/*add_proc_to_readylist*/
 
 
-void remove_from_readylist(proc_ptr proc)
-{
-   
+void remove_from_readylist(proc_ptr proc) {
+    if (proc->status != STATUS_READY) {
+        // process is not on the ready list, nothing to do
+        return;
+    }
+    
+    // find the previous process on the ready list, if any
+    proc_ptr prev = NULL;
+    proc_ptr curr = ReadyList;
+    while (curr != NULL && curr != proc) {
+        prev = curr;
+        curr = curr->next_proc_ptr;
+    }
+    
+    if (curr == NULL) {
+        // process not found on the ready list, nothing to do
+        return;
+    }
+    
+    // remove the process from the ready list
+    if (prev == NULL) {
+        ReadyList = curr->next_proc_ptr;
+    } else {
+        prev->next_proc_ptr = curr->next_proc_ptr;
+    }
+    proc->next_proc_ptr = NULL;
+    proc->status = STATUS_EMPTY;
 }
