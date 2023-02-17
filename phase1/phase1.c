@@ -519,44 +519,47 @@ void check_kernel_mode()
    }
 }
 
+/* ------------------------------------------------------------------------
+   Name - find_proc_slot
+   Purpose - Finds an empty slot in the process table.
+   Parameters - none
+   Returns  If it has searched the entire process table without 
+   finding an empty slot, it returns -1 to indicate that no empty slot was found.
+   If an empty slot is found, that index is returned
+   Side Effects -  None
+   ----------------------------------------------------------------------- */
 int find_proc_slot()
 {
-   int proc_slot = -1;
-   int i;
+   // calculate the starting index 
+   int proc_slot = next_pid%MAXPROC;
+   // initialize the count variable
+   int i = 0;
 
-   int start_pid = next_pid;
-
-   for(i = (start_pid%MAXPROC); i < MAXPROC; i++)
+   // search the process table statuses. If not empty increment next_pid and recalculate the index
+   while(ProcTable[proc_slot].status != STATUS_EMPTY)
    {
-      if(ProcTable[i].status == STATUS_EMPTY)
+      next_pid++;
+      // recalculate the proc_slot index
+      proc_slot = next_pid%MAXPROC;
+      // If we have searched the process list and have not found an empty slot
+      if(i >= MAXPROC)
       {
-         proc_slot = i;
-         break;
+         return -1;
       }
-      else
-      {
-         next_pid++;
-      }
-   }
-
-   if(proc_slot == -1)
-   {
-      for (i = 0; i < (start_pid%MAXPROC); i++)
-      {
-         if(ProcTable[i].status == STATUS_EMPTY)
-         {
-            proc_slot = i;
-            break;
-         }
-         else
-         {
-            next_pid++;
-         }
-      }
+      // increment the counter
+      i++;
    }
    return proc_slot;
 }
 
+/* ------------------------------------------------------------------------
+   Name - add_proc_to_readylist
+   Purpose - Adds a new process to the ReadyList based on its priority .
+   Parameters - proc_ptr proc - the process to be added to the ReadyList
+   Returns - None
+   Side Effects -  proc is added to the ReadyList in a correct position
+   based on its priority 
+   ----------------------------------------------------------------------- */
 void add_proc_to_readylist(proc_ptr proc)
 {
    if (DEBUG && debugflag)
@@ -564,11 +567,14 @@ void add_proc_to_readylist(proc_ptr proc)
       console("add_proc_to_readylist(): Adding process %s to ReadyList\n", proc->name);
    }
 
+   // If the ReadyList is NULL set as proc and its next_proc_ptr to NULL
    if (ReadyList == NULL)
    {
       ReadyList = proc;
       proc->next_proc_ptr = NULL;
    }
+
+   // If new process has a higher priority than any of the existing in the readylist
    else if (ReadyList->priority > proc->priority)
    {
       proc->next_proc_ptr = ReadyList;
@@ -576,11 +582,13 @@ void add_proc_to_readylist(proc_ptr proc)
    }
    else
    {
+      // Traverse the readylist to find the correct position for the new process
       proc_ptr current = ReadyList;
       while (current->next_proc_ptr != NULL && current->next_proc_ptr->priority <= proc->priority)
       {
          current = current->next_proc_ptr;
       }
+      // Insert the new process into the correct position
       proc->next_proc_ptr = current->next_proc_ptr;
       current->next_proc_ptr = proc;
    }
@@ -592,7 +600,14 @@ void add_proc_to_readylist(proc_ptr proc)
 }
 /*add_proc_to_readylist*/
 
-
+/* ------------------------------------------------------------------------
+   Name - remove_from_readylist
+   Purpose - Removes a given process from the ReadyList and reassigns 
+   remaining accordingly
+   Parameters - proc_ptr the process to be removed from the ReadyList
+   Returns - None
+   Side Effects -  proc is removed from the ReadyList
+   ----------------------------------------------------------------------- */
 void remove_from_readylist(proc_ptr proc) {
     if (proc->status != STATUS_READY) {
         // process is not on the ready list, nothing to do
