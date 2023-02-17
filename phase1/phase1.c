@@ -382,9 +382,16 @@ void quit(int code)
    ----------------------------------------------------------------------- */
 void dispatcher(void)
 {
-   proc_ptr next_process;
+   proc_ptr next_process = NULL;
+   int switch_processes = 0;
+   context *p_previous_context;
+   int i;
 
-   // pick the next process to run
+   /* if we are still running, see if there is a higher priority that's ready */
+   if(Current->status)
+   {
+      
+   }
 
    // context switch to it
    p1_switch(Current->pid, next_process->pid);

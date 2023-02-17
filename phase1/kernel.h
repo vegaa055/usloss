@@ -51,13 +51,12 @@ union psr_values {
 #define SENTINELPRIORITY LOWEST_PRIORITY
 
 /* Process Statuses */
-#define STATUS_EMPTY -1
-#define STATUS_READY 1
-#define STATUS_RUNNING 2
-#define STATUS_ZAPPED 3
-#define STATUS_QUIT 4
-#define STATUS_EMPTY 5
-#define STATUS_BLOCKED 8
-#define STATUS_JOIN_BLOCKED 9
-#define STATUS_ZAP_BLOCKED 10
+#define STATUS_EMPTY          0
+#define STATUS_READY          1
+#define STATUS_RUNNING        2
+#define STATUS_ZAPPED         3
+#define STATUS_QUIT           4
+#define STATUS_BLOCKED        8
+#define STATUS_JOIN_BLOCKED   9
+#define STATUS_ZAP_BLOCKED    10
 
