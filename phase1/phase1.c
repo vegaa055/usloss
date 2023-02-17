@@ -493,13 +493,16 @@ int zap(int pid)
    zap_ptr = &ProcTable[pid%MAXPROC];
    zap_ptr->zapped = 1;
 
-   // set current as the zapper
    if(zap_ptr->who_zapped == NULL)
    {
+      // If nobody has previously zapped the process, set Current as the first to do so
       zap_ptr->who_zapped = Current;
    }
    else
    {
+      // If somebody has previously zapped the process, set Current as the most recent to do so.
+      // Set Current's next_who_zapped to the previous value of who_zapped so we don't lose the
+      // previous zapper
       proc_ptr ptr = zap_ptr->who_zapped;
       zap_ptr->who_zapped = Current;
       zap_ptr->who_zapped->next_who_zapped = ptr;
@@ -507,7 +510,9 @@ int zap(int pid)
 
    dispatcher();
 
+   // Check if the process was zapped during its execution.
    if(is_zapped())
+      // If the process was zapped, set the result to -1.
       result = -1;
 
    return result;
