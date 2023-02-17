@@ -54,6 +54,7 @@ union psr_values {
 #define STATUS_EMPTY -1
 #define STATUS_READY 1
 #define STATUS_RUNNING 2
+#define STATUS_ZAPPED 3
 #define STATUS_QUIT 4
 #define STATUS_EMPTY 5
 #define STATUS_BLOCKED 8

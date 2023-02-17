@@ -61,13 +61,15 @@ void startup()
    // check if currently in kernel mode
    check_kernel_mode();
 
-   int i;      /* loop index */
+   int i = 0;      /* loop index */
    int result; /* value returned by call to fork1() */
 
    /* initialize the process table */
    if(DEBUG && debugflag)
       console("startup(): initializing process table - ProcTable[]\n");
-   
+
+   ReadyList[i] = NULL;
+
    for (i = 0; i < MAXPROC; i++)
    {
       init_proc_table(i);
@@ -77,7 +79,7 @@ void startup()
    if (DEBUG && debugflag)
       console("startup(): initializing the Ready & Blocked lists\n");
 
-   ReadyList[i] = NULL;
+
 
    /* Initialize the clock interrupt handler */
    int_vec[CLOCK_INT] = clock_handler; 
@@ -142,7 +144,7 @@ void init_proc_table(int i)
    current_proc.status = STATUS_EMPTY;
    current_proc.quitStatus = STATUS_EMPTY;
    current_proc.startTime = -1;
-   current_proc.zapped = -1;
+   current_proc.zapped = 0;
    current_proc.cpuStartTime = -1;
 }
 
@@ -185,7 +187,7 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
    /* Return if stack size is too small */
    if(stacksize < USLOSS_MIN_STACK)
    {
-      console("fork1(): process %s stack size too small\n");
+      console("fork1(): process %s stack size too small\n", name);
       return -2;  //TODO return value??
    }
 
@@ -239,7 +241,7 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
 
          while(child->next_sibling_ptr != NULL)
          {
-            child = child->next_proc_ptr;
+            child = child->next_sibling_ptr;
          }
          child->next_sibling_ptr = &ProcTable[proc_slot];
       }
@@ -474,15 +476,15 @@ int zap(int pid)
 
    dispatcher();
 
-   if(is_zapped)
+   if(is_zapped())
       result = -1;
 
    return result;
 }
 
-int is_zapped()
+int is_zapped() 
 {
-   return Current->zapped;
+    return Current->zapped;
 }
 
 int getpid()
@@ -503,6 +505,7 @@ int find_proc_slot()
 {
    int proc_slot = -1;
    int i;
+
    int start_pid = next_pid;
 
    for(i = (start_pid%MAXPROC); i < MAXPROC; i++)
@@ -538,46 +541,40 @@ int find_proc_slot()
 
 void add_proc_to_readylist(proc_ptr proc)
 {
-   if(DEBUG && debugflag)
+   if (DEBUG && debugflag)
    {
       console("add_proc_to_readylist(): Adding process %s to ReadyList\n", proc->name);
    }
 
-   if(ReadyList[0] == NULL)
+   if (ReadyList[0] == NULL || ReadyList[0]->priority > proc->priority)
    {
+      proc->next_proc_ptr = ReadyList[0];
       ReadyList[0] = proc;
    }
    else
    {
-      if(ReadyList[0]->priority > proc->priority)
+      proc_ptr last = ReadyList[0];
+      proc_ptr next = last->next_proc_ptr;
+      int i;
+      for (i = 1; i < 6; i++)
       {
-         proc_ptr tempProc = ReadyList[0];
-         ReadyList[0] = proc;
-         proc->next_proc_ptr = tempProc;
-      }
-      else
-      {
-         proc_ptr next = ReadyList[0]->next_proc_ptr;
-         proc_ptr last = ReadyList[0];
-         int i;
-         for(i=1; i < 6; i++)
+         if (next == NULL || next->priority > proc->priority)
          {
-            if(next == NULL || next->priority > proc->priority)
-            {
-               last->next_proc_ptr = proc;
-               proc->next_proc_ptr = next;
-               break;
-            }
-            last = next;
-            next = next->next_proc_ptr;
+            last->next_proc_ptr = proc;
+            proc->next_proc_ptr = next;
+            break;
          }
-      }
-      if(DEBUG && debugflag)
-      {
-         console("add_proc_to_readylist(): Process %s added to ReadyList", proc->name);
+         last = next;
+         next = next->next_proc_ptr;
       }
    }
-}/*add_proc_to_readylist*/
+
+   if (DEBUG && debugflag)
+   {
+      console("add_proc_to_readylist(): Process %s added to ReadyList\n", proc->name);
+   }
+}
+
 
 void remove_from_readylist(proc_ptr proc)
 {
