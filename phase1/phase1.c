@@ -35,7 +35,7 @@ int debugflag = 1;
 /* the process table */
 proc_struct ProcTable[MAXPROC];
 
-proc_ptr ReadyList;
+static proc_ptr ReadyList;
 
 /* current process ID */
 proc_ptr Current;
@@ -225,16 +225,22 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
       halt(1);
    }
 
+   // Set the stack size and priority of the new process
    ProcTable[proc_slot].stacksize = stacksize;
 
    ProcTable[proc_slot].priority = priority;
 
+   // If there is a currently running process, 
+   // add the new process as a child or sibling
    if(Current != NULL)
    {
+      // If the current process has no child, set the new process as its child
       if(Current->child_proc_ptr == NULL)
       {
          Current->child_proc_ptr = &ProcTable[proc_slot];
       }
+      // Otherwise, find the last sibling of the current process 
+      // and set the new process as its next sibling
       else
       {
          proc_ptr child = Current->child_proc_ptr;
@@ -407,7 +413,6 @@ int sentinel (char * dummy)
    }
 } /* sentinel */
 
-
 /* check to determine if deadlock has occurred... */
 static void check_deadlock()
 {
@@ -417,6 +422,7 @@ void enableInterrupts()
 {
 
 }
+
 /*
  * Disables the interrupts.
  */
@@ -432,6 +438,13 @@ void disableInterrupts()
     psr_set( psr_get() & ~PSR_CURRENT_INT );
 } /* disableInterrupts */
 
+/* ------------------------------------------------------------------------
+   Name - zap
+   Purpose - 
+   Parameters - int pid
+   Returns - 
+   Side Effects - 
+   ------------------------------------------------------------------------ */
 int zap(int pid)
 {
    int result = 0;
@@ -635,4 +648,4 @@ void remove_from_readylist(proc_ptr proc) {
     }
     proc->next_proc_ptr = NULL;
     proc->status = STATUS_EMPTY;
-}
+}/*remove_from_readylist*/
