@@ -173,7 +173,7 @@ void finish()
    Side Effects - ReadyList is changed, ProcTable is changed, Current
                   process information changed
    ------------------------------------------------------------------------ */
-int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
+int fork1(char *name, int (*func)(char *), char *arg, int stacksize, int priority)
 {
    int proc_slot;
 
@@ -204,7 +204,7 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
    //  set the proc name
    strcpy(ProcTable[proc_slot].name, name);
    // set the proc start func
-   ProcTable[proc_slot].start_func = f;
+   ProcTable[proc_slot].start_func = func;
 
    if ( arg == NULL )
       ProcTable[proc_slot].start_arg[0] = '\0';
@@ -272,7 +272,7 @@ int fork1(char *name, int (*f)(char *), char *arg, int stacksize, int priority)
    next_pid++;
 
    // call dispatcher
-   if(ProcTable[proc_slot].pid != SENTINELPID)
+   if(func != sentinel)
    {
       dispatcher();
    }
@@ -382,16 +382,9 @@ void quit(int code)
    ----------------------------------------------------------------------- */
 void dispatcher(void)
 {
-   proc_ptr next_process = NULL;
-   int switch_processes = 0;
-   context *p_previous_context;
-   int i;
+   proc_ptr next_process;
 
-   /* if we are still running, see if there is a higher priority that's ready */
-   if(Current->status)
-   {
-      
-   }
+   // pick the next process to run
 
    // context switch to it
    p1_switch(Current->pid, next_process->pid);
