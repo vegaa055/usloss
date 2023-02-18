@@ -3,8 +3,9 @@
     "files.associations": {
         "phase1.h": "c",
         "kernel.h": "c",
-        "strings.h": "c"
+        "strings.h": "c",
+
     },
     "C_Cpp.errorSquiggles": "enabled",
-    "C_Cpp.default.configurationProvider": "ms-vscode.makefile-tools"
+    
 }

@@ -17,6 +17,7 @@ void dispatcher(void);
 void launch();
 void enableInterrupts();
 void disableInterrupts();
+void clock_handler(int dev, void *arg);
 static void check_deadlock();
 void check_kernel_mode();
 void init_proc_table(int i);
@@ -45,7 +46,16 @@ unsigned int next_pid = SENTINELPID;
 
 void clock_handler(int dev, void *arg)
 {
+    check_kernel_mode();
+    disableInterrupts();
 
+    if(Current != NULL){
+        int cpu_time = CLOCK_INT - Current->startTime;
+        Current->cpuStartTime += cpu_time;
+    }
+    
+    dispatcher();
+    enableInterrupts();
 }
 /* -------------------------- Functions ----------------------------------- */
 /* ------------------------------------------------------------------------
@@ -86,8 +96,7 @@ void startup()
    /* startup a sentinel process */
    if (DEBUG && debugflag)
        console("startup(): calling fork1() for sentinel\n");
-   result = fork1("sentinel", sentinel, NULL, USLOSS_MIN_STACK,
-                   SENTINELPRIORITY);
+   result = fork1("sentinel", sentinel, NULL, USLOSS_MIN_STACK, SENTINELPRIORITY);
    if (result < 0) {
       if (DEBUG && debugflag)
          console("startup(): fork1 of sentinel returned error, halting...\n");
@@ -188,13 +197,26 @@ int fork1(char *name, int (*func)(char *), char *arg, int stacksize, int priorit
    if(stacksize < USLOSS_MIN_STACK)
    {
       console("fork1(): process %s stack size too small\n", name);
-      return -2;  //TODO return value??
+      return -1;  //TODO return value??
+   }
+
+   if((next_pid != SENTINELPID) && (priority > MINPRIORITY || priority < MAXPRIORITY)){
+      if(DEBUG && debugflag){
+         console("fork1(): Process %s priority is out of bounds");
+         return -1;
+      }
    }
 
    /* find an empty slot in the process table */
    proc_slot = find_proc_slot();
 
-   /* fill-in entry in process table */
+   if(proc_slot == -1){
+      if(DEBUG && debugflag){
+         console("fork1(): Process %s - no empty slot.\n");
+      }
+      return -1;
+   }
+
    if ( strlen(name) >= (MAXNAME - 1) ) {
       console("fork1(): Process name is too long.  Halting...\n");
       halt(1);
@@ -216,6 +238,8 @@ int fork1(char *name, int (*func)(char *), char *arg, int stacksize, int priorit
    else
       strcpy(ProcTable[proc_slot].start_arg, arg);
 
+   // Set the stack size and priority of the new process
+   ProcTable[proc_slot].stacksize = stacksize;
    /* Initialize the new process's stack */
    ProcTable[proc_slot].stack = malloc(stacksize);
 
@@ -224,9 +248,6 @@ int fork1(char *name, int (*func)(char *), char *arg, int stacksize, int priorit
       console("malloc failure. Halting...\n");
       halt(1);
    }
-
-   // Set the stack size and priority of the new process
-   ProcTable[proc_slot].stacksize = stacksize;
 
    ProcTable[proc_slot].priority = priority;
 
@@ -310,7 +331,6 @@ void launch()
 
 } /* launch */
 
-
 /* ------------------------------------------------------------------------
    Name - join
    Purpose - Wait for a child process (if one has been forked) to quit.  If 
@@ -329,8 +349,39 @@ int join(int *code)
    check_kernel_mode();
    disableInterrupts();
 
+   int i;
+    
+    /* Find a child process that has already quit */
+    for (i = 0; i < MAXPROC; i++) {
+        if (ProcTable[i].status == STATUS_QUIT) {
+            /* Found a child that has quit, return its process ID and exit code */
+            *code = ProcTable[i].quitStatus;
+            return ProcTable[i].pid;
+        }
+    }
 
+    /* No child process has quit yet, so we need to wait for one */
+    Current->status = STATUS_BLOCKED;
+    Current->child_proc_ptr = NULL;
+    dispatcher();
+
+    /* When we get here, a child process has quit, so we can return its process ID and exit code */
+    for (i = 0; i < MAXPROC; i++) {
+        if (ProcTable[i].status == STATUS_QUIT && ProcTable[i].ppid == Current->pid) {
+            /* Found a child that has quit, return its process ID and exit code */
+            *code = ProcTable[i].quitStatus;
+            return ProcTable[i].pid;
+        }
+    }
+
+    /* Should never get here */
+    console("join(): error: no child process has quit\n");
+    halt(1);
+
+    /* Return a value of -2 to indicate that the process has no children */
+    return -2;
 } /* join */
+
 
 
 /* ------------------------------------------------------------------------
@@ -344,8 +395,6 @@ int join(int *code)
    ------------------------------------------------------------------------ */
 void quit(int code)
 {
-
-   int current_pid;
 
    check_kernel_mode();
 
@@ -382,12 +431,23 @@ void quit(int code)
    ----------------------------------------------------------------------- */
 void dispatcher(void)
 {
-   proc_ptr next_process;
+   proc_ptr next_process = ReadyList;
 
-   // pick the next process to run
+   /* Find the highest priority process in the ReadyList */
+   while (next_process != NULL) {
+       if (next_process->status == STATUS_READY && next_process->priority < Current->priority) {
+           break;
+       }
+       next_process = next_process->next_proc_ptr;
+   }
 
-   // context switch to it
-   p1_switch(Current->pid, next_process->pid);
+   /* If there is no higher priority process, return to the current process */
+   if (next_process == NULL) {
+       return;
+   }
+
+   /* Save the current process's context and switch to the new process */
+   context_switch(&Current->state, &next_process->state);
 } /* dispatcher */
 
 
@@ -416,11 +476,27 @@ int sentinel (char * dummy)
 /* check to determine if deadlock has occurred... */
 static void check_deadlock()
 {
+    int blocked_procs = 0;
+    int i;
+
+    /* Count how many processes are blocked */
+    for (i = 0; i < (MAXPROC); i++) {
+        if (ProcTable[i].status == STATUS_BLOCKED) {
+            blocked_procs++;
+        }
+    }
+
+    /* If all processes are blocked except for the sentinel, the system is deadlocked */
+    if (blocked_procs == (next_pid - 2)) {
+        console("check_deadlock(): system is deadlocked\n");
+        halt(1);
+    }
 } /* check_deadlock */
 
-void enableInterrupts()
-{
-
+void enableInterrupts() {
+    unsigned int psr = psr_get(); // get the current program status register
+    psr |= PSR_CURRENT_MODE;      // set the interrupt enable bit
+    psr_set(psr);                 // set the new program status register
 }
 
 /*
