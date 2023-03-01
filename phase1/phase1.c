@@ -344,41 +344,47 @@ void launch()
    ------------------------------------------------------------------------ */
 int join(int *code)
 {
+   int child_pid = -3;
    // check if in kernel mode
    check_kernel_mode();
    disableInterrupts();
-
-   int i;
+   proc_ptr child;
     
-    /* Find a child process that has already quit */
-    for (i = 0; i < MAXPROC; i++) {
-        if (ProcTable[i].status == STATUS_QUIT) {
-            /* Found a child that has quit, return its process ID and exit code */
-            *code = ProcTable[i].quitStatus;
-            return ProcTable[i].pid;
-        }
-    }
+   //process has no children
+   if(Current->child_proc_ptr == NULL && Current->quit_child_ptr == NULL)
+   {
+      console("join(): process %s has no children.\n", Current->name);
+      return -2;
+   }
 
-    /* No child process has quit yet, so we need to wait for one */
-    Current->status = STATUS_BLOCKED;
-    Current->child_proc_ptr = NULL;
-    dispatcher();
+   //no child has quit
+   if(Current->quit_child_ptr == NULL)
+   {      
+      //block
+      Current->status = STATUS_JOIN_BLOCKED;
+      //remove from ready list
+      remove_from_readylist(Current);
 
-    /* When we get here, a child process has quit, so we can return its process ID and exit code */
-    for (i = 0; i < MAXPROC; i++) {
-        if (ProcTable[i].status == STATUS_QUIT && ProcTable[i].ppid == Current->pid) {
-            /* Found a child that has quit, return its process ID and exit code */
-            *code = ProcTable[i].quitStatus;
-            return ProcTable[i].pid;
-        }
-    }
+      //call dispatcher
+      dispatcher();
+   }
 
-    /* Should never get here */
-    console("join(): error: no child process has quit\n");
-    halt(1);
+   // child has quit and reactivate parent
+   child = Current->quit_child_ptr;
+   child_pid = child->pid;
+   *code = child->quitStatus;
+   remove_from_readylist(child);
+   init_proc_table(child_pid);
 
-    /* Return a value of -2 to indicate that the process has no children */
-    return -2;
+   if(is_zapped()){
+      return -1;
+   }
+   /* Should never get here */
+   console("join(): error: no child process has quit\n");
+   halt(1);
+
+   /* Return a value of -2 to indicate that the process has no children */
+   return -2;
 } /* join */
 
 
@@ -394,9 +400,7 @@ int join(int *code)
    ------------------------------------------------------------------------ */
 void quit(int code)
 {
-
    check_kernel_mode();
-
    disableInterrupts();
 
    if(Current->child_proc_ptr != NULL)
@@ -408,13 +412,11 @@ void quit(int code)
    Current->status = STATUS_QUIT;
    remove_from_readylist(Current);
 
-
    // Are there any zappers
    p1_quit(Current->pid);
 
    Current->status = STATUS_QUIT;
 
-   // foreach zapper, wakeup
 } /* quit */
 
 // dispatcher disptches ready processes. The process with the highest priority (the first one in the ready list) is dispatched.
@@ -718,33 +720,17 @@ void add_proc_to_readylist(proc_ptr proc)
    ----------------------------------------------------------------------- */
 void remove_from_readylist(proc_ptr proc) {
 
-   if(proc == NULL || ReadyList == NULL)
-      return;
-
-   if (proc->status != STATUS_READY) {
-        // process is not on the ready list, nothing to do
-        return;
+   if(proc == ReadyList)
+   {
+      ReadyList = ReadyList->next_proc_ptr;
    }
-   
-    // find the previous process on the ready list, if any
-   proc_ptr prev = NULL;
-   proc_ptr curr = ReadyList;
-   while (curr != NULL && curr != proc) {
-      prev = curr;
-      curr = curr->next_proc_ptr;
+   else
+   {
+      proc_ptr current = ReadyList;
+      while(current->next_proc_ptr != proc)
+      {
+         current = current->next_proc_ptr;
+      }
+      current->next_proc_ptr = proc->next_proc_ptr;
    }
-    
-   if (curr == NULL) {
-      // process not found on the ready list, nothing to do
-      return;
-   }
-    
-   // remove the process from the ready list
-   if (prev == NULL) {
-       ReadyList = curr->next_proc_ptr;
-   } else {
-       prev->next_proc_ptr = curr->next_proc_ptr;
-   }
-   proc->next_proc_ptr = NULL;
-   proc->status = STATUS_EMPTY;
 }/*remove_from_readylist*/
