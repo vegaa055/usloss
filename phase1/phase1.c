@@ -89,8 +89,6 @@ void startup()
    if (DEBUG && debugflag)
       console("startup(): initializing the Ready & Blocked lists\n");
 
-
-
    /* Initialize the clock interrupt handler */
    int_vec[CLOCK_INT] = clock_handler; 
    /* startup a sentinel process */
@@ -103,7 +101,6 @@ void startup()
       halt(1);
    }
   
-   
    /* start the test process */
    if (DEBUG && debugflag)
       console("startup(): calling fork1() for start1\n");
@@ -132,29 +129,30 @@ void init_proc_table(int i)
 {
    check_kernel_mode();
    disableInterrupts();
-   proc_struct current_proc = ProcTable[i];
 
    // initialize ProcTable
-   current_proc.next_proc_ptr = NULL;
-   current_proc.child_proc_ptr = NULL;
-   current_proc.next_sibling_ptr = NULL;
-   current_proc.parent_ptr = NULL;
-   current_proc.quit_child_ptr = NULL;
-   current_proc.next_sibling_quit = NULL;
-   current_proc.who_zapped = NULL;
-   current_proc.next_who_zapped = NULL;
-   strcpy(current_proc.name, "");
-   current_proc.start_arg[0] = '\0';
-   current_proc.pid = -1;
-   current_proc.priority = -1;
-   current_proc.start_func = NULL;
-   current_proc.stack = NULL;
-   current_proc.stacksize = -1;
-   current_proc.status = STATUS_EMPTY;
-   current_proc.quitStatus = STATUS_EMPTY;
-   current_proc.startTime = -1;
-   current_proc.zapped = 0;
-   current_proc.cpuStartTime = -1;
+   ProcTable[i].next_proc_ptr = NULL;
+   ProcTable[i].child_proc_ptr = NULL;
+   ProcTable[i].next_sibling_ptr = NULL;
+   ProcTable[i].parent_ptr = NULL;
+   ProcTable[i].quit_child_ptr = NULL;
+   ProcTable[i].next_sibling_quit = NULL;
+   ProcTable[i].who_zapped = NULL;
+   ProcTable[i].next_who_zapped = NULL;
+   ProcTable[i].name[0] = '\0';
+   ProcTable[i].start_arg[0] = '\0';
+   ProcTable[i].pid = -1;
+   ProcTable[i].priority = -1;
+   ProcTable[i].start_func = NULL;
+   ProcTable[i].stack = NULL;
+   ProcTable[i].stacksize = -1;
+   ProcTable[i].status = STATUS_EMPTY;
+   ProcTable[i].quitStatus = STATUS_EMPTY;
+   ProcTable[i].startTime = -1;
+   ProcTable[i].zapped = 0;
+   ProcTable[i].cpuStartTime = -1;
+
+   enableInterrupts();
 }
 
 /* ------------------------------------------------------------------------
@@ -279,7 +277,7 @@ int fork1(char *name, int (*func)(char *), char *arg, int stacksize, int priorit
    /* Initialize context for this process, but use launch function pointer for
     * the initial value of the process's program counter (PC)
     */
-   context_init(&(ProcTable[proc_slot].state), psr_get(),
+   context_init(&(ProcTable[proc_slot].current_context), psr_get(),
                 ProcTable[proc_slot].stack, 
                 ProcTable[proc_slot].stacksize, launch);
 
@@ -330,6 +328,7 @@ void launch()
    quit(result);
 
 } /* launch */
+
 
 /* ------------------------------------------------------------------------
    Name - join
@@ -418,37 +417,52 @@ void quit(int code)
    // foreach zapper, wakeup
 } /* quit */
 
-
-/* ------------------------------------------------------------------------
-   Name - dispatcher
-   Purpose - dispatches ready processes.  The process with the highest
-             priority (the first on the ready list) is scheduled to
-             run.  The old process is swapped out and the new process
-             swapped in.
-   Parameters - none
-   Returns - nothing
-   Side Effects - the context of the machine is changed
-   ----------------------------------------------------------------------- */
-void dispatcher(void)
+// dispatcher disptches ready processes. The process with the highest priority (the first one in the ready list) is dispatched.
+// The old process is swapped out and the new process swapped in.
+void dispatcher()
 {
-   proc_ptr next_process = ReadyList;
+    if (DEBUG && debugflag) {
+        console("dispatcher(): started.\n");
+    }
+    
+    /* Dispacher is called for the first time for starting process (start1) */
+    if (Current == NULL) {
+        Current = ReadyList;
+        if (DEBUG && debugflag) {
+            console("dispatcher(): dispatching %s.\n", Current->name);
+        }
+        Current->startTime = sys_clock();
 
-   /* Find the highest priority process in the ReadyList */
-   while (next_process != NULL) {
-       if (next_process->status == STATUS_READY && next_process->priority < Current->priority) {
-           break;
-       }
-       next_process = next_process->next_proc_ptr;
-   }
+        /* Enable Interrupts - returning to user code */
+        psr_set( psr_get() | PSR_CURRENT_INT );
+        context_switch(NULL, &Current->current_context);
+    } else {
+        proc_ptr old = Current;
+        if (old->status == STATUS_RUNNING) {
+            old->status = STATUS_READY;
+        }
+        Current = ReadyList;
+        remove_from_readylist(Current);
+        Current->status = STATUS_RUNNING;
+        add_proc_to_readylist(Current);
+        if (DEBUG && debugflag) {
+            console("dispatcher(): dispatching %s.\n", 
+                    Current->name);
+        }
+        Current->startTime = sys_clock();
+        p1_switch(old->pid, Current->pid);
 
-   /* If there is no higher priority process, return to the current process */
-   if (next_process == NULL) {
-       return;
-   }
+        /* Enable Interrupts - returning to user code */
+        psr_set( psr_get() | PSR_CURRENT_INT );
+        context_switch(&old->current_context, &Current->current_context);
+    }
 
-   /* Save the current process's context and switch to the new process */
-   context_switch(&Current->state, &next_process->state);
-} /* dispatcher */
+    if (DEBUG && debugflag){
+        console("dispatcher(): Printing process table");
+        dump_processes();
+    }
+}
+
 
 
 /* ------------------------------------------------------------------------
@@ -559,15 +573,15 @@ int zap(int pid)
       result = 0; //Might be redundant but just in case
    }
 
-   /* mark the process as zapped */
-   
-   /* block until pid quits */
-   Current->status = STATUS_ZAP_BLOCKED;
    // remove the process from the readylist
    remove_from_readylist(Current);
    // set the zap_ptr and zapped property to 1 to mark as 'zapped'
    zap_ptr = &ProcTable[pid%MAXPROC];
+   /* mark the process as zapped */
    zap_ptr->zapped = 1;
+
+   /* block until pid quits */
+   Current->status = STATUS_ZAP_BLOCKED;
 
    if(zap_ptr->who_zapped == NULL)
    {
@@ -703,30 +717,34 @@ void add_proc_to_readylist(proc_ptr proc)
    Side Effects -  proc is removed from the ReadyList
    ----------------------------------------------------------------------- */
 void remove_from_readylist(proc_ptr proc) {
-    if (proc->status != STATUS_READY) {
+
+   if(proc == NULL || ReadyList == NULL)
+      return;
+
+   if (proc->status != STATUS_READY) {
         // process is not on the ready list, nothing to do
         return;
-    }
-    
+   }
+   
     // find the previous process on the ready list, if any
-    proc_ptr prev = NULL;
-    proc_ptr curr = ReadyList;
-    while (curr != NULL && curr != proc) {
-        prev = curr;
-        curr = curr->next_proc_ptr;
-    }
+   proc_ptr prev = NULL;
+   proc_ptr curr = ReadyList;
+   while (curr != NULL && curr != proc) {
+      prev = curr;
+      curr = curr->next_proc_ptr;
+   }
     
-    if (curr == NULL) {
-        // process not found on the ready list, nothing to do
-        return;
-    }
+   if (curr == NULL) {
+      // process not found on the ready list, nothing to do
+      return;
+   }
     
-    // remove the process from the ready list
-    if (prev == NULL) {
-        ReadyList = curr->next_proc_ptr;
-    } else {
-        prev->next_proc_ptr = curr->next_proc_ptr;
-    }
-    proc->next_proc_ptr = NULL;
-    proc->status = STATUS_EMPTY;
+   // remove the process from the ready list
+   if (prev == NULL) {
+       ReadyList = curr->next_proc_ptr;
+   } else {
+       prev->next_proc_ptr = curr->next_proc_ptr;
+   }
+   proc->next_proc_ptr = NULL;
+   proc->status = STATUS_EMPTY;
 }/*remove_from_readylist*/

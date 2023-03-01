@@ -7,5 +7,7 @@
 
     },
     "C_Cpp.errorSquiggles": "enabled",
+    "editor.tabCompletion": "on",
+    "diffEditor.codeLens": true,
     
 }

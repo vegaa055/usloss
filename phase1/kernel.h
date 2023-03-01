@@ -15,7 +15,7 @@ struct proc_struct {
    proc_ptr       next_who_zapped;
    char           name[MAXNAME];       /* process's name */
    char           start_arg[MAXARG];   /* args passed to process */
-   context        state;               /* current context for process */
+   context        current_context;               /* current context for process */
    short          pid;                 /* process id */
    short          ppid;                /* parent process id*/
    int            priority;
