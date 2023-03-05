@@ -49,7 +49,7 @@ union psr_values {
 #define MAXPRIORITY 1
 #define SENTINELPID 1
 #define SENTINELPRIORITY LOWEST_PRIORITY
-
+#define TIME_SLICE 80000
 /* Process Statuses */
 #define STATUS_EMPTY          0
 #define STATUS_READY          1

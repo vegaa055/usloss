@@ -27,6 +27,10 @@ int getpid();
 int find_proc_slot();
 void add_proc_to_readylist(proc_ptr proc);
 void remove_from_readylist(proc_ptr proc);
+void removeFromChildList(proc_ptr process);
+void addToQuitChildList(proc_ptr ptr);
+void removeFromQuitList(proc_ptr ptr);
+void unblockZappers(proc_ptr ptr);
 
 /* -------------------------- Globals ------------------------------------- */
 
@@ -46,17 +50,17 @@ unsigned int next_pid = SENTINELPID;
 
 void clock_handler(int dev, void *arg)
 {
-    check_kernel_mode();
-    disableInterrupts();
+   check_kernel_mode();
+   disableInterrupts();
 
-    if(Current != NULL){
-        int cpu_time = CLOCK_INT - Current->startTime;
-        Current->cpuStartTime += cpu_time;
-    }
-    
-    dispatcher();
-    enableInterrupts();
+   if(Current != NULL){
+      int cpu_time = CLOCK_INT - Current->startTime;
+      Current->cpuStartTime += cpu_time;
+   }
+   dispatcher();
+   //enableInterrupts();
 }
+
 /* -------------------------- Functions ----------------------------------- */
 /* ------------------------------------------------------------------------
    Name - startup
@@ -77,7 +81,7 @@ void startup()
    /* initialize the process table */
    if(DEBUG && debugflag)
       console("startup(): initializing process table - ProcTable[]\n");
-
+   
    ReadyList = NULL;
 
    for (i = 0; i < MAXPROC; i++)
@@ -91,10 +95,13 @@ void startup()
 
    /* Initialize the clock interrupt handler */
    int_vec[CLOCK_INT] = clock_handler; 
+
    /* startup a sentinel process */
    if (DEBUG && debugflag)
        console("startup(): calling fork1() for sentinel\n");
+
    result = fork1("sentinel", sentinel, NULL, USLOSS_MIN_STACK, SENTINELPRIORITY);
+
    if (result < 0) {
       if (DEBUG && debugflag)
          console("startup(): fork1 of sentinel returned error, halting...\n");
@@ -129,7 +136,6 @@ void init_proc_table(int i)
 {
    check_kernel_mode();
    disableInterrupts();
-
    // initialize ProcTable
    ProcTable[i].next_proc_ptr = NULL;
    ProcTable[i].child_proc_ptr = NULL;
@@ -151,7 +157,6 @@ void init_proc_table(int i)
    ProcTable[i].startTime = -1;
    ProcTable[i].zapped = 0;
    ProcTable[i].cpuStartTime = -1;
-
    enableInterrupts();
 }
 
@@ -215,17 +220,20 @@ int fork1(char *name, int (*func)(char *), char *arg, int stacksize, int priorit
       return -1;
    }
 
+   // check if the name is too long
    if ( strlen(name) >= (MAXNAME - 1) ) {
       console("fork1(): Process name is too long.  Halting...\n");
       halt(1);
    }
 
+   // set the proc slot
    ProcTable[proc_slot].pid = next_pid;
    //  set the proc name
    strcpy(ProcTable[proc_slot].name, name);
    // set the proc start func
    ProcTable[proc_slot].start_func = func;
 
+   // set the proc start arg
    if ( arg == NULL )
       ProcTable[proc_slot].start_arg[0] = '\0';
    else if ( strlen(arg) >= (MAXARG - 1) ) 
@@ -247,6 +255,7 @@ int fork1(char *name, int (*func)(char *), char *arg, int stacksize, int priorit
       halt(1);
    }
 
+   // Set the priority of the new process
    ProcTable[proc_slot].priority = priority;
 
    // If there is a currently running process, 
@@ -261,17 +270,21 @@ int fork1(char *name, int (*func)(char *), char *arg, int stacksize, int priorit
       // Otherwise, find the last sibling of the current process 
       // and set the new process as its next sibling
       else
-      {
+      {  
+         // Find the last sibling of the current process
          proc_ptr child = Current->child_proc_ptr;
 
+         // Loop through the siblings until the last one is found
          while(child->next_sibling_ptr != NULL)
          {
             child = child->next_sibling_ptr;
          }
+         // Set the new process as the last sibling
          child->next_sibling_ptr = &ProcTable[proc_slot];
       }
    }
 
+   // Set the parent of the new process to the current process
    ProcTable[proc_slot].parent_ptr = Current;
 
    /* Initialize context for this process, but use launch function pointer for
@@ -287,6 +300,7 @@ int fork1(char *name, int (*func)(char *), char *arg, int stacksize, int priorit
    /* Make process ready and add to ready list*/
    ProcTable[proc_slot].status = STATUS_READY;
    
+   // add the new process to the ready list
    add_proc_to_readylist(&ProcTable[proc_slot]);
    next_pid++;
 
@@ -296,6 +310,7 @@ int fork1(char *name, int (*func)(char *), char *arg, int stacksize, int priorit
       dispatcher();
    }
    
+   // return the pid of the new process
    return ProcTable[proc_slot].pid;
 
 } /* fork1 */
@@ -329,7 +344,6 @@ void launch()
 
 } /* launch */
 
-
 /* ------------------------------------------------------------------------
    Name - join
    Purpose - Wait for a child process (if one has been forked) to quit.  If 
@@ -344,12 +358,13 @@ void launch()
    ------------------------------------------------------------------------ */
 int join(int *code)
 {
-   int child_pid = -3;
-   // check if in kernel mode
+   int child_pid = -3;     // pid of the child process to be returned
+   proc_ptr child;         // pointer to the child process
+
+   // check if in kernel mode and disable interrupts
    check_kernel_mode();
    disableInterrupts();
-   proc_ptr child;
-    
+
    //process has no children
    if(Current->child_proc_ptr == NULL && Current->quit_child_ptr == NULL)
    {
@@ -371,8 +386,14 @@ int join(int *code)
 
    // child has quit and reactivate parent
    child = Current->quit_child_ptr;
+
+   // set the child pid to be returned
    child_pid = child->pid;
+
+   // set the child's quit status to the code pointer
    *code = child->quitStatus;
+
+   // remove the child from the quit child list
    remove_from_readylist(child);
    init_proc_table(child_pid);
 
@@ -387,8 +408,6 @@ int join(int *code)
    return -2;
 } /* join */
 
-
-
 /* ------------------------------------------------------------------------
    Name - quit
    Purpose - Stops the child process and notifies the parent of the death by
@@ -400,22 +419,81 @@ int join(int *code)
    ------------------------------------------------------------------------ */
 void quit(int code)
 {
+   console("quit(): started\n");
+   int current_pid;
+
+   // check if in kernel mode and disable interrupts
    check_kernel_mode();
    disableInterrupts();
 
+   if (DEBUG && debugflag)
+      console("quit(): started\n");
+
+   // If the process has children, halt
    if(Current->child_proc_ptr != NULL)
    {
       console("quit(): process %s has children.\n", Current->name);
       halt(1);
    }
 
+   // Set the quit status of the current process
+   Current->quitStatus = code;
+   // Set the status of the current process to quit
    Current->status = STATUS_QUIT;
    remove_from_readylist(Current);
+   if(is_zapped()){
+      // Unblock zappers
+      unblockZappers(Current->who_zapped);
+   }
 
-   // Are there any zappers
-   p1_quit(Current->pid);
+   // The process that is quitting is a child process and has its own child
+   if(Current->parent_ptr != NULL && Current->quit_child_ptr != NULL)
+   {
+      while(Current->quit_child_ptr != NULL)
+      {
+         int child_pid = Current->quit_child_ptr->pid;
+         //TODO remove from quit child list
+         removeFromQuitList(Current->quit_child_ptr);
+         init_proc_table(child_pid);
+      }
 
-   Current->status = STATUS_QUIT;
+      // Unblock parent
+      Current->parent_ptr->status = STATUS_READY;
+      // remove from child list
+      removeFromChildList(Current);
+      // add to quit child list
+      addToQuitChildList(Current);
+      add_proc_to_readylist(Current->parent_ptr);
+      current_pid = Current->pid;
+   }
+   // process is a child
+   else if(Current->parent_ptr != NULL)
+   {
+      addToQuitChildList(Current->parent_ptr);
+      removeFromChildList(Current);
+      if(Current->parent_ptr->status == STATUS_JOIN_BLOCKED)
+      {
+         add_proc_to_readylist(Current->parent_ptr);
+         Current->parent_ptr->status = STATUS_READY;
+      }
+   }
+   // process is a parent
+   else
+   {
+      // remove all children from quit child list
+      while(Current->quit_child_ptr != NULL)
+      {
+         int child_pid = Current->quit_child_ptr->pid;
+         //TODO remove from quit child list
+         removeFromQuitList(Current->quit_child_ptr);
+         init_proc_table(child_pid);
+      }
+      current_pid = Current->pid;
+      init_proc_table(Current->pid);
+   }
+   p1_quit(current_pid);
+
+   dispatcher();
 
 } /* quit */
 
@@ -463,9 +541,7 @@ void dispatcher()
         console("dispatcher(): Printing process table");
         dump_processes();
     }
-}
-
-
+}/* dispatcher */
 
 /* ------------------------------------------------------------------------
    Name - sentinel
@@ -734,3 +810,60 @@ void remove_from_readylist(proc_ptr proc) {
       current->next_proc_ptr = proc->next_proc_ptr;
    }
 }/*remove_from_readylist*/
+
+
+void removeFromChildList(proc_ptr process) {
+   proc_ptr temp = process;
+   // process is at the head of the linked list
+   if (process == process->parent_ptr->child_proc_ptr) 
+   {
+      process->parent_ptr->child_proc_ptr = process->next_sibling_ptr;
+   } 
+   else 
+   { 
+      // process is in the middle or end of linked list
+      temp = process->parent_ptr->child_proc_ptr;
+
+      while (temp->next_sibling_ptr != process) 
+      {
+         temp = temp->next_sibling_ptr;
+      }
+      temp->next_sibling_ptr = temp->next_sibling_ptr->next_sibling_ptr;
+   }
+   if (DEBUG && debugflag) {
+      console("removeFromChildList(): Process %d removed.\n", temp->pid);
+   }
+}/* removeFromChildList */
+
+void removeFromQuitList(proc_ptr process)
+{
+   process->parent_ptr->quit_child_ptr = process->next_sibling_quit;
+
+   if(DEBUG && debugflag)
+   {
+      console("removeFromQuitList(): Process %d removed.\n", process->pid);
+   }
+}
+
+void addToQuitChildList(proc_ptr ptr) {
+   if (ptr->quit_child_ptr == NULL) 
+   {
+      ptr->quit_child_ptr = Current;
+      return;
+   }
+   proc_ptr child = ptr->quit_child_ptr;
+   while (child->next_sibling_quit != NULL) 
+   {
+      child = child->next_sibling_quit;
+   }
+   child->next_sibling_quit = Current;
+}/* addToQuitChildList */
+
+void unblockZappers(proc_ptr ptr) {
+    if (ptr == NULL) {
+        return;
+    }
+    unblockZappers(ptr->next_who_zapped);
+    ptr->status = STATUS_READY;
+    add_proc_to_readylist(ptr);
+} /* unblockZappers */
